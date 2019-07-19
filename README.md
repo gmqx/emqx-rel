@@ -1,52 +1,49 @@
-gmqx-rel
-========
+# emqx-rel
+
 
 The Release Project for EMQ X Broker.
 
-NOTICE: Requires Erlang/OTP R21.0+ to build since EMQ X R3.0
+NOTICE: Requires Erlang/OTP R21.0+ to build since EMQ X R3.2
 
-Build on Linux/Unix/Mac
------------------------
 
-```
-git clone -b X https://github.com/gmqx/gmqx-rel.git gmqx-rel
-cd gmqx-rel && make
-cd _rel/gmqx && ./bin/gmqx console
-```
+There are 4 target profiles for building emqx-rel: emqx, emqx_pkg, emqx_edge,and emqx_edge_pkg. The default target profile is emqx. User can build specified target release by execute command `make ${target-release}` in emqx_rel.
 
-Build Docker Image
-------------------
+## Install Erlang/OTP-R21.3 and rebar3
+
+Read the section below and install rebar3
 
 ```
-git clone -b X https://github.com/gmqx/gmqx-docker.git gmqx_docker
-cd gmqx_docker && docker build -t gmqx:latest .
+https://www.rebar3.org/docs/getting-started#section-installing-from-source
 ```
 
-Build on Windows
-----------------
-
-Install Erlang/OTP-R21.0 and MSYS2-x86_64 for erlang.mk:
+## Build on Linux/Unix/Mac
 
 ```
-https://erlang.mk/guide/installation.html#_on_windows
+git clone https://github.com/emqx/emqx-rel.git emqx-rel
+cd emqx-rel && make
+./_build/emqx/rel/emqx/bin/emqx console
 ```
 
-Clone and build the EMQ X Broker with erlang.mk:
+## Build on Windows
 
 ```
-git clone -b X https://github.com/gmqx/gmqx-rel.git gmqx-rel
-cd gmqx-rel
+git clone https://github.com/emqx/emqx-rel.git emqx-rel
+cd emqx-rel
 make
-cd _rel\gmqx
-bin\gmqx console
+cd _build\emqx\rel\emqx
+bin\emqx console
 ```
 
-License
--------
+# Test
+
+```bash
+make ct
+```
+
+# License
 
 Apache License Version 2.0
 
-Author
-------
+# Author
 
 EMQ X Team.

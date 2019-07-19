@@ -1,88 +1,88 @@
-PROJECT = gmqx-rel
-PROJECT_DESCRIPTION = Release Project for Gizwits MQ X Broker
+## shallow clone for speed
 
-# All gmqx app names. Repo name, not Erlang app name
-# By default, app name is the same as repo name with dash replaced by underscore.
-# Otherwise define the dependency in regular erlang.mk style:
-## DEPS += gmqx
-## dep_gmqx = git https://github.com/gmqx/gmqx.git gmqx30
+REBAR_GIT_CLONE_OPTIONS += --depth 1
+export REBAR_GIT_CLONE_OPTIONS
 
-OUR_APPS = gmqx \
-					 gmqx-auth-clientid \
-					 gmqx-auth-mysql \
-					 gmqx-sn \
-					 gmqx-auth-jwt
+TAG = $(shell git tag -l --points-at HEAD)
 
-# Default release profiles
-RELX_OUTPUT_DIR ?= _rel
-REL_PROFILE ?= dev
-DEPLOY ?= cloud
+ifeq ($(EMQX_DEPS_DEFAULT_VSN),)
+	ifneq ($(TAG),)
+		EMQX_DEPS_DEFAULT_VSN ?= $(lastword 1, $(TAG))
+	else
+		EMQX_DEPS_DEFAULT_VSN ?= develop
+	endif
+endif
 
-# Default version for all OUR_APPS
-## This is either a tag or branch name for ALL dependencies
-EMQX_DEPS_DEFAULT_VSN ?= master
+export EMQX_DEPS_DEFAULT_VSN
 
-dash = -
-uscore = _
+REBAR := rebar3
 
-# Make Erlang app name from repo name.
-# Replace dashes with underscores
-app_name = $(subst $(dash),$(uscore),$(1))
+PROFILE ?= emqx
+PROFILES := emqx emqx_pkg emqx_edge emqx_edge_pkg
 
-# set gmqx_app_name_vsn = x.y.z to override default version
-app_vsn = $(if $($(call app_name,$(1))_vsn),$($(call app_name,$(1))_vsn),$(EMQX_DEPS_DEFAULT_VSN))
+CT_APPS := emqx_auth_mysql
 
-DEPS += $(foreach dep,$(OUR_APPS),$(call app_name,$(dep)))
 
-# Inject variables like
-# dep_app_name = git-gmqx https://github.com/gmqx/app-name branch-or-tag
-# for erlang.mk
-$(foreach dep,$(OUR_APPS),$(eval dep_$(call app_name,$(dep)) = git-gmqx https://github.com/gmqx/$(dep) $(call app_vsn,$(dep))))
 
-# Add this dependency before including erlang.mk
-all:: OTP_21_OR_NEWER
 
-# COVER = true
 
-$(shell [ -f erlang.mk ] || curl -s -o erlang.mk https://raw.githubusercontent.com/gmqx/erlmk/master/erlang.mk)
 
-include erlang.mk
+.PHONY: default
+default: $(PROFILE)
 
-# Fail fast in case older than OTP 21
-.PHONY: OTP_21_OR_NEWER
-OTP_21_OR_NEWER:
-	@erl -noshell -eval "R = list_to_integer(erlang:system_info(otp_release)), halt(if R >= 21 -> 0; true -> 1 end)"
+.PHONY: all
+all: $(PROFILES)
 
-# Compile options
-ERLC_OPTS += +warn_export_all +warn_missing_spec +warn_untyped_record
+.PHONY: distclean
+distclean:
+	@rm -rf _build
+	@rm -f data/app.*.config data/vm.*.args rebar.lock
+	@rm -rf _checkouts
 
-plugins:
-	@rm -rf rel
-	@mkdir -p rel/conf/plugins/ rel/schema/
-	@for conf in $(DEPS_DIR)/*/etc/*.conf* ; do \
-		if [ "gmqx.conf" = "$${conf##*/}" ] ; then \
-			cp $${conf} rel/conf/ ; \
-		elif [ "acl.conf" = "$${conf##*/}" ] ; then \
-			cp $${conf} rel/conf/ ; \
-		elif [ "ssl_dist.conf" = "$${conf##*/}" ] ; then \
-			cp $${conf} rel/conf/ ; \
-		else \
-			cp $${conf} rel/conf/plugins ; \
-		fi ; \
-	done
-	@for schema in $(DEPS_DIR)/*/priv/*.schema ; do \
-		cp $${schema} rel/schema/ ; \
-	done
+.PHONY: $(PROFILES)
+$(PROFILES:%=%):
+ifneq ($(OS),Windows_NT)
+	ln -snf _build/$(@)/lib ./_checkouts
+endif
+	$(REBAR) as $(@) release
 
-vm_args:
-	@if [ $(DEPLOY) = "cloud" ] ; then \
-		cp deps/gmqx/etc/vm.args rel/conf/vm.args ; \
-	else \
-		cp deps/gmqx/etc/vm.args.$(DEPLOY) rel/conf/vm.args ; \
-	fi ;
+.PHONY: $(PROFILES:%=build-%)
+$(PROFILES:%=build-%):
+	$(REBAR) as $(@:build-%=%) compile
 
-app:: plugins vm_args vars-ln
+.PHONY: deps-all
+deps-all: $(PROFILES:%=deps-%)
 
-vars-ln:
-	ln -s -f vars-$(REL_PROFILE).config vars.config
+.PHONY: $(PROFILES:%=deps-%)
+$(PROFILES:%=deps-%):
+	$(REBAR) as $(@:deps-%=%) get-deps
+
+.PHONY: run $(PROFILES:%=run-%)
+run: run-$(PROFILE)
+$(PROFILES:%=run-%):
+ifneq ($(OS),Windows_NT)
+	@ln -snf _build/$(@:run-%=%)/lib ./_checkouts
+endif
+	$(REBAR) as $(@:run-%=%) run
+
+.PHONY: clean $(PROFILES:%=clean-%)
+clean: $(PROFILES:%=clean-%)
+$(PROFILES:%=clean-%):
+	@rm -rf _build/$(@:clean-%=%)
+	@rm -rf _build/$(@:clean-%=%)+test
+
+.PHONY: $(PROFILES:%=checkout-%)
+$(PROFILES:%=checkout-%): build-$(PROFILE)
+	ln -s -f _build/$(@:checkout-%=%)/lib ./_checkouts
+
+# Checkout current profile
+.PHONY: checkout
+checkout:
+	@ln -s -f _build/$(PROFILE)/lib ./_checkouts
+
+# Run ct for an app in current profile
+.PHONY: $(CT_APPS:%=ct-%)
+ct: $(CT_APPS:%=ct-%)
+$(CT_APPS:%=ct-%): checkout-$(PROFILE)
+	$(REBAR) as $(PROFILE) ct --verbose --dir _checkouts/$(@:ct-%=%)/test --verbosity 50
 
